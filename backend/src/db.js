@@ -44,10 +44,32 @@ export async function initDatabase() {
   const seedPath = path.resolve(__dirname, "../../../database/seed.sql");
   const schemaSql = await fs.readFile(schemaPath, "utf8");
   await pool.query(schemaSql);
-  await pool.query("ALTER TABLE clients ADD COLUMN IF NOT EXISTS external_id VARCHAR(50) NULL");
-  await pool.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS external_id VARCHAR(50) NULL");
-  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_external_id ON clients (external_id)");
-  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS uq_products_external_id ON products (external_id)");
+  const ensureColumn = async (tableName) => {
+    const [rows] = await pool.query(
+      `SELECT COUNT(*) AS c
+       FROM information_schema.columns
+       WHERE table_schema = ? AND table_name = ? AND column_name = 'external_id'`,
+      [cfg.database, tableName]
+    );
+    if (rows[0].c === 0) {
+      await pool.query(`ALTER TABLE ${tableName} ADD COLUMN external_id VARCHAR(50) NULL`);
+    }
+  };
+  const ensureUniqueIndex = async (tableName, indexName) => {
+    const [rows] = await pool.query(
+      `SELECT COUNT(*) AS c
+       FROM information_schema.statistics
+       WHERE table_schema = ? AND table_name = ? AND index_name = ?`,
+      [cfg.database, tableName, indexName]
+    );
+    if (rows[0].c === 0) {
+      await pool.query(`CREATE UNIQUE INDEX ${indexName} ON ${tableName} (external_id)`);
+    }
+  };
+  await ensureColumn("clients");
+  await ensureColumn("products");
+  await ensureUniqueIndex("clients", "uq_clients_external_id");
+  await ensureUniqueIndex("products", "uq_products_external_id");
 
   const [tables] = await pool.query("SHOW TABLES LIKE 'clients'");
   if (tables.length > 0) {
