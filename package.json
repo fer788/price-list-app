@@ -1,0 +1,16 @@
+{
+  "name": "price-list-app",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Spreadsheet-like price list management system",
+  "scripts": {
+    "dev": "concurrently \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix backend run start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
