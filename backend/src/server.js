@@ -34,9 +34,10 @@ app.get("/api/grid", asyncHandler(async (req, res) => {
   );
 
   const [prices] = await pool.query(
-    `SELECT pr.client_id, pr.product_id, pr.price, pr.effective_date
+    `SELECT pr.client_id, p.name AS product_name, pr.price, pr.effective_date
      FROM prices pr
      INNER JOIN clients c ON c.id = pr.client_id
+     INNER JOIN products p ON p.id = pr.product_id
      WHERE c.list_type = ?
      ORDER BY pr.effective_date DESC`,
     [listType]
@@ -44,7 +45,7 @@ app.get("/api/grid", asyncHandler(async (req, res) => {
 
   const priceMap = new Map();
   for (const row of prices) {
-    const key = `${row.client_id}:${row.product_id}`;
+    const key = `${row.client_id}:${row.product_name}`;
     const existing = priceMap.get(key);
     if (!existing || new Date(row.effective_date) > new Date(existing.effective_date)) {
       priceMap.set(key, row);
@@ -54,7 +55,7 @@ app.get("/api/grid", asyncHandler(async (req, res) => {
   const matrix = clients.map((client) => {
     const cells = {};
     for (const col of columns) {
-      const key = `${client.id}:${col.product_id}`;
+      const key = `${client.id}:${col.product_name}`;
       const value = priceMap.get(key);
       cells[`p_${col.product_id}`] = {
         price: value ? Number(value.price) : null,
@@ -160,15 +161,24 @@ app.delete("/api/products/:id", asyncHandler(async (req, res) => {
 app.post("/api/update", asyncHandler(async (req, res) => {
   const { clientId, productId, formatId, price, effectiveDate } = req.body;
 
-  if (!clientId || !productId || !formatId || typeof price !== "number") {
+  if (!clientId || !productId || typeof price !== "number") {
     return res.status(400).json({ error: "Invalid payload" });
+  }
+
+  let resolvedFormatId = formatId;
+  if (!resolvedFormatId) {
+    const [[fmt]] = await pool.query("SELECT id FROM formats ORDER BY id ASC LIMIT 1");
+    if (!fmt) {
+      return res.status(500).json({ error: "No formats in database" });
+    }
+    resolvedFormatId = fmt.id;
   }
 
   const date = effectiveDate || new Date().toISOString().slice(0, 10);
   await pool.query(
     `INSERT INTO prices (client_id, product_id, format_id, price, effective_date)
      VALUES (?, ?, ?, ?, ?)`,
-    [clientId, productId, formatId, price, date]
+    [clientId, productId, resolvedFormatId, price, date]
   );
 
   return res.json({ ok: true });
@@ -185,22 +195,18 @@ app.post("/api/increase", asyncHandler(async (req, res) => {
 
   await pool.query(
     `INSERT INTO prices (client_id, product_id, format_id, price, effective_date)
-     SELECT latest.client_id, latest.product_id, latest.format_id, ROUND(latest.price * ?, 2), ?
+     SELECT r.client_id, r.product_id, r.format_id, ROUND(r.price * ?, 2), ?
      FROM (
-       SELECT p1.client_id, p1.product_id, p1.format_id, p1.price
-       FROM prices p1
-       INNER JOIN (
-         SELECT p.client_id, p.product_id, p.format_id, MAX(p.effective_date) AS max_date
-         FROM prices p
-         INNER JOIN clients c ON c.id = p.client_id
-         WHERE c.list_type = ?
-         GROUP BY p.client_id, p.product_id, p.format_id
-       ) latest_dates
-       ON p1.client_id = latest_dates.client_id
-       AND p1.product_id = latest_dates.product_id
-       AND p1.format_id = latest_dates.format_id
-       AND p1.effective_date = latest_dates.max_date
-     ) latest`,
+       SELECT client_id, product_id, format_id, price, effective_date,
+         ROW_NUMBER() OVER (
+           PARTITION BY client_id, product_id
+           ORDER BY effective_date DESC, format_id ASC
+         ) AS rn
+       FROM prices pr
+       INNER JOIN clients c ON c.id = pr.client_id
+       WHERE c.list_type = ?
+     ) r
+     WHERE r.rn = 1`,
     [multiplier, date, listType]
   );
 

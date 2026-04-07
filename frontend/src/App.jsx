@@ -58,7 +58,6 @@ function App() {
       body: JSON.stringify({
         clientId: row.client.id,
         productId: col.productId,
-        formatId: col.formatId,
         price: parsed,
         effectiveDate
       })
@@ -209,7 +208,7 @@ function App() {
                 <tr>
                   <th className="sticky-col">Client</th>
                   {grid.columns.map((col) => (
-                    <th key={col.key}>{col.product} / {col.format}</th>
+                    <th key={col.key}>{col.product}</th>
                   ))}
                 </tr>
               </thead>
