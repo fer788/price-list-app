@@ -45,25 +45,21 @@ export async function initDatabase() {
   const schemaSql = await fs.readFile(schemaPath, "utf8");
   await pool.query(schemaSql);
   const ensureColumn = async (tableName) => {
-    const [rows] = await pool.query(
-      `SELECT COUNT(*) AS c
-       FROM information_schema.columns
-       WHERE table_schema = ? AND table_name = ? AND column_name = 'external_id'`,
-      [cfg.database, tableName]
-    );
-    if (rows[0].c === 0) {
+    try {
       await pool.query(`ALTER TABLE ${tableName} ADD COLUMN external_id VARCHAR(50) NULL`);
+    } catch (err) {
+      if (err.code !== "ER_DUP_FIELDNAME") {
+        throw err;
+      }
     }
   };
   const ensureUniqueIndex = async (tableName, indexName) => {
-    const [rows] = await pool.query(
-      `SELECT COUNT(*) AS c
-       FROM information_schema.statistics
-       WHERE table_schema = ? AND table_name = ? AND index_name = ?`,
-      [cfg.database, tableName, indexName]
-    );
-    if (rows[0].c === 0) {
+    try {
       await pool.query(`CREATE UNIQUE INDEX ${indexName} ON ${tableName} (external_id)`);
+    } catch (err) {
+      if (err.code !== "ER_DUP_KEYNAME") {
+        throw err;
+      }
     }
   };
   await ensureColumn("clients");
