@@ -75,6 +75,82 @@ app.get("/api/grid", asyncHandler(async (req, res) => {
   });
 }));
 
+app.get("/api/clients", asyncHandler(async (_req, res) => {
+  const [rows] = await pool.query(
+    "SELECT id, external_id AS externalId, name, list_type AS listType FROM clients ORDER BY name ASC"
+  );
+  return res.json(rows);
+}));
+
+app.post("/api/clients", asyncHandler(async (req, res) => {
+  const { externalId, name, listType } = req.body;
+  if (!externalId || !name || !listType) {
+    return res.status(400).json({ error: "externalId, name and listType are required" });
+  }
+  const [result] = await pool.query(
+    "INSERT INTO clients (external_id, name, list_type) VALUES (?, ?, ?)",
+    [externalId, name, listType]
+  );
+  return res.json({ ok: true, id: result.insertId });
+}));
+
+app.put("/api/clients/:id", asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { externalId, name, listType } = req.body;
+  if (!externalId || !name || !listType) {
+    return res.status(400).json({ error: "externalId, name and listType are required" });
+  }
+  await pool.query(
+    "UPDATE clients SET external_id = ?, name = ?, list_type = ? WHERE id = ?",
+    [externalId, name, listType, id]
+  );
+  return res.json({ ok: true });
+}));
+
+app.delete("/api/clients/:id", asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  await pool.query("DELETE FROM clients WHERE id = ?", [id]);
+  return res.json({ ok: true });
+}));
+
+app.get("/api/products", asyncHandler(async (_req, res) => {
+  const [rows] = await pool.query(
+    "SELECT id, external_id AS externalId, name FROM products ORDER BY name ASC"
+  );
+  return res.json(rows);
+}));
+
+app.post("/api/products", asyncHandler(async (req, res) => {
+  const { externalId, name } = req.body;
+  if (!externalId || !name) {
+    return res.status(400).json({ error: "externalId and name are required" });
+  }
+  const [result] = await pool.query(
+    "INSERT INTO products (external_id, name) VALUES (?, ?)",
+    [externalId, name]
+  );
+  return res.json({ ok: true, id: result.insertId });
+}));
+
+app.put("/api/products/:id", asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { externalId, name } = req.body;
+  if (!externalId || !name) {
+    return res.status(400).json({ error: "externalId and name are required" });
+  }
+  await pool.query(
+    "UPDATE products SET external_id = ?, name = ? WHERE id = ?",
+    [externalId, name, id]
+  );
+  return res.json({ ok: true });
+}));
+
+app.delete("/api/products/:id", asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  await pool.query("DELETE FROM products WHERE id = ?", [id]);
+  return res.json({ ok: true });
+}));
+
 app.post("/api/update", asyncHandler(async (req, res) => {
   const { clientId, productId, formatId, price, effectiveDate } = req.body;
 

@@ -3,12 +3,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000/api";
 
 function App() {
+  const [view, setView] = useState("grid");
   const [listType, setListType] = useState("base");
   const [grid, setGrid] = useState({ columns: [], rows: [] });
   const [loading, setLoading] = useState(false);
   const [savingCell, setSavingCell] = useState(null);
   const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
   const [increasePercent, setIncreasePercent] = useState(0);
+  const [clients, setClients] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [clientForm, setClientForm] = useState({ id: null, externalId: "", name: "", listType: "base" });
+  const [productForm, setProductForm] = useState({ id: null, externalId: "", name: "" });
   const cellRefs = useRef({});
 
   const columnIndexByKey = useMemo(
@@ -27,6 +32,21 @@ function App() {
   useEffect(() => {
     loadGrid();
   }, [listType]);
+
+  const loadClients = async () => {
+    const res = await fetch(`${API_BASE}/clients`);
+    setClients(await res.json());
+  };
+
+  const loadProducts = async () => {
+    const res = await fetch(`${API_BASE}/products`);
+    setProducts(await res.json());
+  };
+
+  useEffect(() => {
+    loadClients();
+    loadProducts();
+  }, []);
 
   const saveCell = async (row, col, nextPrice) => {
     const parsed = Number(nextPrice);
@@ -82,6 +102,53 @@ function App() {
     await loadGrid();
   };
 
+  const submitClient = async (e) => {
+    e.preventDefault();
+    const method = clientForm.id ? "PUT" : "POST";
+    const url = clientForm.id ? `${API_BASE}/clients/${clientForm.id}` : `${API_BASE}/clients`;
+    await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        externalId: clientForm.externalId.trim(),
+        name: clientForm.name.trim(),
+        listType: clientForm.listType
+      })
+    });
+    setClientForm({ id: null, externalId: "", name: "", listType: "base" });
+    await loadClients();
+    await loadGrid();
+  };
+
+  const removeClient = async (id) => {
+    await fetch(`${API_BASE}/clients/${id}`, { method: "DELETE" });
+    await loadClients();
+    await loadGrid();
+  };
+
+  const submitProduct = async (e) => {
+    e.preventDefault();
+    const method = productForm.id ? "PUT" : "POST";
+    const url = productForm.id ? `${API_BASE}/products/${productForm.id}` : `${API_BASE}/products`;
+    await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        externalId: productForm.externalId.trim(),
+        name: productForm.name.trim()
+      })
+    });
+    setProductForm({ id: null, externalId: "", name: "" });
+    await loadProducts();
+    await loadGrid();
+  };
+
+  const removeProduct = async (id) => {
+    await fetch(`${API_BASE}/products/${id}`, { method: "DELETE" });
+    await loadProducts();
+    await loadGrid();
+  };
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -92,7 +159,13 @@ function App() {
         <div className="chip">{grid.rows.length} clients</div>
       </header>
 
-      <section className="control-panel">
+      <section className="view-tabs">
+        <button className={view === "grid" ? "tab active" : "tab"} onClick={() => setView("grid")}>Matriz</button>
+        <button className={view === "clients" ? "tab active" : "tab"} onClick={() => setView("clients")}>ABM Clientes</button>
+        <button className={view === "products" ? "tab active" : "tab"} onClick={() => setView("products")}>ABM Productos</button>
+      </section>
+
+      {view === "grid" && <section className="control-panel">
         <label className="field">
           <span>List type</span>
           <select value={listType} onChange={(e) => setListType(e.target.value)}>
@@ -117,9 +190,9 @@ function App() {
         </label>
 
         <button className="primary-btn" onClick={applyIncrease}>Apply Increase</button>
-      </section>
+      </section>}
 
-      <section className="sheet-panel">
+      {view === "grid" && <section className="sheet-panel">
         <div className="sheet-head">
           <h2>Editable Price Grid</h2>
           <p>Use arrows/enter to move. Changes save on blur.</p>
@@ -169,7 +242,83 @@ function App() {
             </table>
           </div>
         )}
-      </section>
+      </section>}
+
+      {view === "clients" && (
+        <section className="sheet-panel">
+          <div className="sheet-head">
+            <h2>ABM Clientes</h2>
+            <p>ID externo manual para integración CRM.</p>
+          </div>
+          <form className="crud-form" onSubmit={submitClient}>
+            <input
+              placeholder="ID externo (ej: CLI-001)"
+              value={clientForm.externalId}
+              onChange={(e) => setClientForm((s) => ({ ...s, externalId: e.target.value }))}
+              required
+            />
+            <input
+              placeholder="Nombre cliente"
+              value={clientForm.name}
+              onChange={(e) => setClientForm((s) => ({ ...s, name: e.target.value }))}
+              required
+            />
+            <select
+              value={clientForm.listType}
+              onChange={(e) => setClientForm((s) => ({ ...s, listType: e.target.value }))}
+            >
+              <option value="base">Base</option>
+              <option value="mas_impuestos">Mas Impuestos</option>
+            </select>
+            <button className="primary-btn" type="submit">{clientForm.id ? "Actualizar" : "Crear"}</button>
+          </form>
+          <div className="crud-list">
+            {clients.map((c) => (
+              <div className="crud-row" key={c.id}>
+                <span>{c.externalId || "-"}</span>
+                <span>{c.name}</span>
+                <span>{c.listType}</span>
+                <button onClick={() => setClientForm(c)}>Editar</button>
+                <button className="danger" onClick={() => removeClient(c.id)}>Borrar</button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {view === "products" && (
+        <section className="sheet-panel">
+          <div className="sheet-head">
+            <h2>ABM Productos</h2>
+            <p>ID externo manual para integración CRM.</p>
+          </div>
+          <form className="crud-form" onSubmit={submitProduct}>
+            <input
+              placeholder="ID externo (ej: PROD-001)"
+              value={productForm.externalId}
+              onChange={(e) => setProductForm((s) => ({ ...s, externalId: e.target.value }))}
+              required
+            />
+            <input
+              placeholder="Nombre producto"
+              value={productForm.name}
+              onChange={(e) => setProductForm((s) => ({ ...s, name: e.target.value }))}
+              required
+            />
+            <button className="primary-btn" type="submit">{productForm.id ? "Actualizar" : "Crear"}</button>
+          </form>
+          <div className="crud-list">
+            {products.map((p) => (
+              <div className="crud-row" key={p.id}>
+                <span>{p.externalId || "-"}</span>
+                <span>{p.name}</span>
+                <button onClick={() => setProductForm(p)}>Editar</button>
+                <button className="danger" onClick={() => removeProduct(p.id)}>Borrar</button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
