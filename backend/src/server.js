@@ -26,23 +26,36 @@ app.get("/api/grid", asyncHandler(async (req, res) => {
   );
 
   const [columns] = await pool.query(
-    `SELECT p.id AS product_id, p.name AS product_name, f.id AS format_id, f.description AS format_description
+    `SELECT
+       MIN(p.id) AS product_id,
+       p.name AS product_name,
+       MIN(f.id) AS format_id,
+       f.description AS format_description
      FROM products p
      CROSS JOIN formats f
+     GROUP BY p.name, f.description
      ORDER BY p.name ASC, f.description ASC`
   );
 
   const [prices] = await pool.query(
-    `SELECT pr.client_id, pr.product_id, pr.format_id, pr.price, pr.effective_date
+    `SELECT
+       pr.client_id,
+       p.name AS product_name,
+       f.description AS format_description,
+       pr.price,
+       pr.effective_date
      FROM prices pr
      INNER JOIN clients c ON c.id = pr.client_id
-     WHERE c.list_type = ?`,
+     INNER JOIN products p ON p.id = pr.product_id
+     INNER JOIN formats f ON f.id = pr.format_id
+     WHERE c.list_type = ?
+     ORDER BY pr.effective_date DESC`,
     [listType]
   );
 
   const priceMap = new Map();
   for (const row of prices) {
-    const key = `${row.client_id}:${row.product_id}:${row.format_id}`;
+    const key = `${row.client_id}:${row.product_name}:${row.format_description}`;
     const existing = priceMap.get(key);
     if (!existing || new Date(row.effective_date) > new Date(existing.effective_date)) {
       priceMap.set(key, row);
@@ -52,7 +65,7 @@ app.get("/api/grid", asyncHandler(async (req, res) => {
   const matrix = clients.map((client) => {
     const cells = {};
     for (const col of columns) {
-      const key = `${client.id}:${col.product_id}:${col.format_id}`;
+      const key = `${client.id}:${col.product_name}:${col.format_description}`;
       const value = priceMap.get(key);
       cells[`${col.product_id}_${col.format_id}`] = {
         price: value ? Number(value.price) : null,
@@ -115,7 +128,13 @@ app.delete("/api/clients/:id", asyncHandler(async (req, res) => {
 
 app.get("/api/products", asyncHandler(async (_req, res) => {
   const [rows] = await pool.query(
-    "SELECT id, external_id AS externalId, name FROM products ORDER BY name ASC"
+    `SELECT
+       MIN(id) AS id,
+       MAX(external_id) AS externalId,
+       name
+     FROM products
+     GROUP BY name
+     ORDER BY name ASC`
   );
   return res.json(rows);
 }));
